@@ -1,0 +1,53 @@
+---
+setitle: "Timeshifting of power using battery storage"
+output: html_document
+---
+
+# Timeshifting of power using battery storage
+
+This is a simple analysis to evaluate the opportunty of timeshifting power in the northen European day-ahead Elspot power market.
+
+```{r, echo=FALSE}
+library(RSQLite)
+library(ggplot2)
+library(plyr)
+```
+
+Data for the Elspot market was downloaded from [Nordpool](http://www.nordpoolspot.com/) and preprocessed into a SQLite database file. All prices are in EUR. From this data I calculate the intraday trough-to-peak for each day and study it's distribution. The intraday trough-to-peak represent the maximum timeshift opportunity.
+
+```{r}
+conn <- dbConnect(dbDriver("SQLite"), "nordpool.db", flags=SQLITE_RO)
+rs <- dbSendQuery(conn, "SELECT date, area, MAX(price)-MIN(price) as ttp FROM elspot GROUP BY date, area")
+data <- fetch(rs)
+cdata <- ddply(data, "area", summarise, ttp.mean=mean(ttp), ttp.75th=quantile(ttp, .75))
+summary(data)
+```
+
+Mean and 75th percentile prices per area:
+
+```{r, results='asis'}
+knitr::kable(cdata)
+```
+
+Distribution of trough-to-peak per area:
+
+```{r, fig.width=10, fig.height=7}
+ggplot(data, aes(x=ttp)) +
+  ggtitle("Distribution of trough-to-peak values") +
+  geom_density(fill='gray') + 
+  geom_vline(data=cdata, aes(xintercept=ttp.mean), linetype="dashed", size=1) +
+  facet_wrap(~ area, ncol=3, scales="free_y")
+```
+
+If the trough-to-peak value is higher than the amortized cost per MWh of power storage we can profitably timeshift power. I found several sources online for a price of 140USD for Li-ion cells when buying large quantities. I don't have data on cost of the inverters and substations. I assume they double the cost. For amortizing the cells I do a straight amortization over 5000 cycles (can be changed for a better model).
+
+```{r}
+installation_cost = 140 * 1000
+amortized_cost = 2 * installation_cost / 5000
+```
+
+Amortized cost of Li-ion batteries per MWh in USD: `r amortized_cost`
+
+
+
+
